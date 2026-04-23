@@ -356,6 +356,39 @@ async def change_uid(callback: types.CallbackQuery, state: FSMContext):
     await callback.message.edit_text("🔄 Введите новый Player ID:")
     await state.set_state(OrderForm.entering_uid)
     await callback.answer()
+    
+# ================= ПЕРЕСЫЛКА СООБЩЕНИЙ АДМИНУ =================
+@dp.message()
+async def forward_to_admin(message: types.Message):
+    if message.from_user.id == ADMIN_ID:
+        return
+
+    async with aiosqlite.connect("orders.db") as db:
+        cursor = await db.execute(
+            "SELECT id, uid FROM orders WHERE user_id = ? AND status = 'pending' ORDER BY id DESC LIMIT 1",
+            (message.from_user.id,)
+        )
+        order = await cursor.fetchone()
+
+    if not order:
+        return
+
+    order_id, uid = order
+    username = message.from_user.username or message.from_user.first_name
+    header = f"💳 Сообщение от клиента\n@{username}\nUID: {uid}\nЗаказ #{order_id}\n\n"
+
+    try:
+        if message.text:
+            await bot.send_message(ADMIN_ID, header + message.text)
+        else:
+            await bot.copy_message(
+                chat_id=ADMIN_ID,
+                from_chat_id=message.chat.id,
+                message_id=message.message_id,
+                caption=header + (message.caption or "")
+            )
+    except Exception as e:
+        print(f"Ошибка пересылки: {e}")
 
 # ================= ЗАПУСК =================
 async def main():
